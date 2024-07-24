@@ -7,6 +7,8 @@ Copyright Dr. Philipp Emanuel Stelzig, 2023-2024
 module Optim
 
 using LinearAlgebra
+using JuMP
+using Ipopt
 using NLsolve
 
 """
@@ -271,6 +273,59 @@ function qplinconstr(Q::Matrix{<:Real}, c::Vector{<:Real}, A::Matrix{<:Real}, b:
     J_min = 0.5*x_min'*Q*x_min + c'*x_min
 
     return x_min, J_min
+end
+
+"""
+Solves the fully constrained nonlinear program
+
+f(x) = min!
+
+s.t. g(x) <= 0 and h(x) = 0
+
+for f : R^n -> R, g : R^n -> R^m, h : R^n -> R^l where the constraints are understood elementwise. 
+This function simply wraps JuMP and Ipopt. 
+
+JuMP uses automatic differentiation. It is therefore required to use Julia-native function definitions 
+for f, g, and h only. JuMP does not support black box optimization. For automatic differentiation to 
+work, a function must (!) have abstract argument types Real or Number. Concrete data types are not 
+supported.
+    
+See https://jump.dev/JuMP.jl/stable/manual/nonlinear/#Automatic-differentiation    
+"""
+function gdfullconstr(f::Function, g::Union{Function,Nothing}, h::Union{Function,Nothing}, x_0, tol::Real, n_max::Integer)
+    model = Model(Ipopt.Optimizer)
+    n = length(x_0)
+    @variable(model, x[1:n])
+    set_start_value.(x, x_0)
+
+    @objective(model, Min, f(x))
+
+    if g !== nothing
+        @constraint(model, g(x) <= 0)
+    end
+
+    if h !== nothing
+        @constraint(model, h(x) == 0)
+    end
+
+    set_optimizer_attribute(model, "max_iter", n_max)
+
+    optimize!(model)
+    
+    solution_summary(model)
+
+    x_min = value.(x)
+    f_min = f(x_min)
+
+    if g !== nothing
+        @assert all(g(x_min) .<= tol) "Minimizer x_min violates constraint g(x)<=0"
+    end
+
+    if h !== nothing
+        @assert all(norm.(h(x_min)) .<= tol) "Minimizer x_min violates constraint t(x)=0"
+    end
+
+    return x_min, f_min
 end
 
 end
