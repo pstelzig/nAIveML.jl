@@ -80,5 +80,71 @@ function forward(svm::LinHardMargin, x_in::Vector{<:Real})
     return r
 end
 
+mutable struct KernelHardMargin
+    b::Real
+    k::Function
+    sv::Matrix{<:Real}
+    ysv::Array{<:Integer}
+    lambdasv::Array{<:Real}
+
+    function KernelHardMargin(kernel::Function)
+        new(0.0, kernel, Array{Real}(undef, 0, 0), Array{Integer}([]), Array{Real}([]))
+    end
+end
+
+function train!(svm::KernelHardMargin, X::Matrix{<:Real}, y::Vector{<:Integer}, tol::Real, maxSteps::Integer)
+    N = size(X)[2]
+
+    @assert (size(X)[2] == N) && (length(y) == N) "Dimensions do not match"
+
+    M = zeros(Real, N, N)
+    for i in 1:N
+        for j in 1:N
+            M[i,j] = y[i]*svm.k(X[:,i], X[:,j])*y[j]
+        end
+    end
+
+    """
+    Objective associated with the SVM's dual problem
+        q(v) = 1/2* v'Mv - sum_i v_i
+    """    
+    function q(v)
+        return 0.5*v'*M*v - ones(Real, N)'*v
+    end
+
+    # Minimizes the objective associated with the SVM's dual problem
+    #   q(v) = 1/2* v'Mv - sum_i v_i
+    #   s.t. y'v =0 and v>=0
+    lambda_0 = ones(Real, N)
+    lambda, _ = optim.gdfullconstr(q, x -> -x, x -> y'*x, lambda_0, tol, maxSteps)
+
+
+    # Support vector indices
+    svidx = [j for j in 1:N if abs(lambda[j]) > tol] 
+
+    # Weights and bias
+    n_sv = length(svidx)
+    svm.sv = X[:,svidx]
+    svm.ysv = y[svidx]
+    svm.lambdasv = lambda[svidx]
+    bs = zeros(n_sv)
+    for l in 1:n_sv
+        bs[l] = svm.ysv[l] - sum([svm.lambdasv[j]*svm.ysv[j]*svm.k(svm.sv[:,j],svm.sv[:,l]) for j in 1:n_sv])
+    end    
+
+    # Check correctness: Entries of b must be identical
+    bmax = maximum(bs)
+    bmin = minimum(bs)
+    @assert abs(bmax - bmin) < tol "SVM calculation yielded inconistent results for b: max_i b_i=$bmax, min_i b_i = $bmin"
+
+    svm.b = sum(bs)/n_sv
+end
+
+function forward(svm::KernelHardMargin, x_in::Vector{<:Real})
+    n_sv = length(svm.ysv)
+    r = sign(sum([svm.lambdasv[j]*svm.ysv[j]*svm.k(svm.sv[:,j], x_in) for j in 1:n_sv]) + svm.b)
+    return r
+end
+
 
 end
