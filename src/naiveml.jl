@@ -8,5 +8,6 @@ Copyright Dr. Philipp Emanuel Stelzig, 2023-2024
 
 module nAIveML
 include("regression.jl")
+include("neuralnetworks.jl")
 include("optim.jl")
 end
