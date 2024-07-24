@@ -224,4 +224,53 @@ function gdnonlinconstr(f::Function, df::Function, h::Function, dh::Function, x_
     return x_new, f_new
 end
 
+"""
+Solves the constrained quatratic program
+
+J(x) := 1/2*x'Qx + c'x = min!
+
+s.t. Ax <= b
+
+where Q in R^{n x n}, c in R^n, A in R^{m x n}, b in R^m. It is assumed that Q is symmetric and 
+positive definite, hence in particular invertible. Solving is done by gradient descent on the Lagrangian dual 
+
+q(v) := 1/2 v'Sv + r'v  = min!
+
+s.t. v >= 0
+
+with S = AQ^{-1}A' and r = c'Q^{-1}A' + b', yielding by Karish-Kuhn-Tucker conditions the minimizer 
+
+x_min = -Q^{-1}(A'v_min + c)
+"""
+function qplinconstr(Q::Matrix{<:Real}, c::Vector{<:Real}, A::Matrix{<:Real}, b::Vector{<:Real}, s::Real, sRel::Real, tol::Real, n_max::Integer)
+    m = size(b)
+    Q_inv = inv(Q)
+
+    S = A*Q_inv*A'
+    r = A*Q_inv*c + b
+
+    function q(v)
+        qv = 0.5*v'*S*v + r'v
+
+        return qv
+    end
+
+    function Dq(v)
+        dqv = S*v + r
+
+        return dqv
+    end
+
+    v_0 = ones(m)
+    v_low = zeros(m)
+    v_high = 10^10*ones(m)
+
+    v_min, _ = gdunconstr(q, Dq, v_0, v_low, v_high, s, sRel, tol, n_max)
+
+    x_min = -Q_inv*(A'*v_min + c)
+    J_min = 0.5*x_min'*Q*x_min + c'*x_min
+
+    return x_min, J_min
+end
+
 end
