@@ -10,6 +10,7 @@ module nAIveML
 include("regression.jl")
 include("neuralnetworks.jl")
 include("dimreduction.jl")
+include("encoder.jl")
 include("svm.jl")
 include("optim.jl")
 end
